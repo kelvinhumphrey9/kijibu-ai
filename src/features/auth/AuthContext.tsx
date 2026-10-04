@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
@@ -56,6 +56,7 @@ const loadMemberships = async (currentSession: Session | null) => {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
+  const sessionRef = useRef<Session | null>(null);
   const [memberships, setMemberships] = useState<WorkspaceMembership[]>([]);
   const [loading, setLoading] = useState(true);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
@@ -64,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshWorkspace = useCallback(async () => {
     setWorkspaceError(null);
     try {
-      const nextMemberships = await loadMemberships(session);
+      const nextMemberships = await loadMemberships(sessionRef.current);
       setMemberships(nextMemberships);
       const savedId = localStorage.getItem(ACTIVE_BUSINESS_KEY);
       const nextActiveId = nextMemberships.some((membership) => membership.businessId === savedId)
@@ -77,17 +78,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setWorkspaceError(error instanceof Error ? error.message : "Unable to load your workspace.");
       setMemberships([]);
     }
-  }, [session]);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
     supabase.auth.getSession().then(({ data }) => {
-      if (mounted) setSession(data.session);
+      if (!mounted) return;
+      sessionRef.current = data.session;
+      setSession(data.session);
     }).finally(() => {
       if (mounted) setLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === "INITIAL_SESSION") return;
+      sessionRef.current = nextSession;
       setSession(nextSession);
       setTimeout(() => {
         if (mounted) void refreshWorkspace();
@@ -104,16 +109,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!loading) void refreshWorkspace();
   }, [loading, refreshWorkspace]);
 
-  const setActiveBusinessId = (businessId: string) => {
+  const setActiveBusinessId = useCallback((businessId: string) => {
     setActiveBusinessIdState(businessId);
     localStorage.setItem(ACTIVE_BUSINESS_KEY, businessId);
-  };
+  }, []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     await supabase.auth.signOut();
+    sessionRef.current = null;
     localStorage.removeItem(ACTIVE_BUSINESS_KEY);
     setMemberships([]);
-  };
+  }, []);
 
   const activeMembership = memberships.find((membership) => membership.businessId === activeBusinessId) ?? memberships[0] ?? null;
   const value = useMemo<AuthContextValue>(() => ({
@@ -127,7 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setActiveBusinessId,
     refreshWorkspace,
     signOut,
-  }), [activeMembership, loading, memberships, refreshWorkspace, session, workspaceError]);
+  }), [activeMembership, loading, memberships, refreshWorkspace, session, setActiveBusinessId, signOut, workspaceError]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -1,3 +1,5 @@
+import { lazy, Suspense } from "react";
+import { Loader2 } from "lucide-react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -6,15 +8,20 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "@/features/auth/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AppShell } from "@/layouts/AppShell";
-import AuthCallback from "@/pages/AuthCallback";
-import Index from "@/pages/Index";
-import Login from "@/pages/Login";
 import ModulePlaceholder from "@/pages/ModulePlaceholder";
 import NotFound from "@/pages/NotFound";
-import Onboarding from "@/pages/Onboarding";
-import ResetPassword from "@/pages/ResetPassword";
+
+const AuthCallback = lazy(() => import("@/pages/AuthCallback"));
+const Index = lazy(() => import("@/pages/Index"));
+const Login = lazy(() => import("@/pages/Login"));
+const Onboarding = lazy(() => import("@/pages/Onboarding"));
+const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
 
 const queryClient = new QueryClient();
+
+function PageFallback() {
+  return <div className="flex min-h-screen items-center justify-center bg-[#f6f8f7] text-[#0e6b53]"><Loader2 className="h-5 w-5 animate-spin" aria-label="Loading page" /></div>;
+}
 
 const workspaceModules: Record<string, { title: string; description: string }> = {
   "/inbox": { title: "Inbox", description: "A shared workspace for AI-assisted conversations, assignment, internal notes, and human handoff." },
@@ -40,18 +47,20 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <Routes>
-            <Route path="/" element={<WorkspaceRoute />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/auth/callback" element={<AuthCallback />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route element={<ProtectedRoute />}>
-              <Route path="/onboarding" element={<Onboarding />} />
-            </Route>
-            <Route path="/dashboard" element={<WorkspaceRoute />} />
-            {Object.keys(workspaceModules).map((path) => <Route key={path} path={path} element={<WorkspaceRoute modulePath={path} />} />)}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <Suspense fallback={<PageFallback />}>
+            <Routes>
+              <Route path="/" element={<WorkspaceRoute />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route element={<ProtectedRoute />}>
+                <Route path="/onboarding" element={<Onboarding />} />
+              </Route>
+              <Route path="/dashboard" element={<WorkspaceRoute />} />
+              {Object.keys(workspaceModules).map((path) => <Route key={path} path={path} element={<WorkspaceRoute modulePath={path} />} />)}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
